@@ -1,5 +1,4 @@
 import aiohttp
-import asyncio
 from astrbot.api.event import filter, AstrMessageEvent
 from astrbot.api.star import Context, Star
 from astrbot.api import logger
@@ -8,7 +7,7 @@ from urllib.parse import urlparse
 
 # Manbo TTS API 信息
 MANBO_TTS_API_URL = "https://api.milorapart.top/apis/mbAIsc"
-MAX_TEXT_LENGTH = 100  # 设置最大文本长度，避免请求过长
+MAX_TEXT_LENGTH = 200  # 设置最大文本长度，避免请求过长
 ALLOWED_DOMAINS = ["api.milorapart.top"]  # 允许的音频 URL 域名白名单
 
 class ManboTTSPlugin(Star):
@@ -26,7 +25,6 @@ class ManboTTSPlugin(Star):
 
     async def fetch_audio_url(self, text_to_convert):
         """异步获取音频 URL，带有超时设置，使用 GET 请求"""
-        # 如果 session 未初始化或已关闭，进行懒加载初始化
         if not self.session or self.session.closed:
             logger.info("Session 未初始化或已关闭，正在初始化...")
             async with self.lock:
@@ -40,36 +38,35 @@ class ManboTTSPlugin(Star):
                 params={"text": text_to_convert, "format": "wav"},
                 timeout=timeout,
             ) as response:
-                if response.status == 200:
-                    try:
-                        data = await response.json()
-                        if isinstance(data, dict) and "url" in data:
-                            audio_url = data["url"]
-                            # 校验 URL 协议和格式，避免 SSRF
-                            if self.is_valid_url(audio_url):
-                                return audio_url
-                            else:
-                                logger.error(f"非法的音频 URL：{audio_url}")
-                                return None
-                        else:
-                            logger.error(f"返回的 JSON 格式无效，或缺少 'url' 字段：{data}")
-                            return None
-                    except aiohttp.ContentTypeError:
-                        logger.error("响应内容不是有效的 JSON")
-                        return None
-                else:
+                if response.status != 200:
                     logger.error(f"接口请求失败，状态码：{response.status}")
+                    return None
+                try:
+                    data = await response.json()
+                    if isinstance(data, dict) and "url" in data:
+                        audio_url = data["url"]
+                        # 校验 URL 协议和格式，避免 SSRF
+                        if self.is_valid_url(audio_url):
+                            return audio_url
+                        else:
+                            logger.error(f"非法的音频 URL：{audio_url}")
+                            return None
+                    else:
+                        logger.error(f"返回的 JSON 格式无效，或缺少 'url' 字段：{data}")
+                        return None
+                except aiohttp.ContentTypeError:
+                    logger.error("响应内容不是有效的 JSON")
                     return None
         except aiohttp.ClientError as e:
             logger.error(f"请求异常：{str(e)}")
             return None
 
-    def is_valid_url(self, url):
+    @staticmethod
+    def is_valid_url(url):
         """校验 URL 是否为有效的外部 URL，避免 SSRF"""
         try:
             parsed_url = urlparse(url)
-            # 检查 URL 协议是否为 http/https，且域名在白名单中
-            if parsed_url.scheme in ["http", "https"] and parsed_url.hostname in ALLOWED_DOMAINS:
+            if parsed_url.scheme in ["http", "https"]:
                 return True
             return False
         except Exception as e:
@@ -77,26 +74,20 @@ class ManboTTSPlugin(Star):
             return False
 
     @filter.command("manbo")
-    async def manbo(self, event: AstrMessageEvent):
+    async def manbo(self, event: AstrMessageEvent, text: str):
         """这是一个文本转语音（TTS）指令"""
-        message_str = event.message_str.strip()
-
-        # 优化提取 text_to_convert
-        parts = message_str.split(maxsplit=1)
-        text_to_convert = parts[1].strip() if len(parts) > 1 else ""
-
         # 输入文本长度限制
-        if len(text_to_convert) > MAX_TEXT_LENGTH:
+        if len(text) > MAX_TEXT_LENGTH:
             yield event.plain_result(f"文本长度超过限制（{MAX_TEXT_LENGTH} 字符）。请缩短文本再试。")
             return
 
-        if not text_to_convert:
+        if not text:
             yield event.plain_result("请输入要转换为语音的文本！")
             return
 
         try:
             # 异步获取音频 URL
-            audio_url = await self.fetch_audio_url(text_to_convert)
+            audio_url = await self.fetch_audio_url(text)
             if audio_url:
                 # 直接使用 Record.fromURL 来传递音频 URL
                 chain = [

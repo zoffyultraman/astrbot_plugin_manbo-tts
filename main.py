@@ -91,24 +91,24 @@ class ManboTTSPlugin(Star):
             return False
 
     @filter.command("manbo")
-    async def manbo(self, event: AstrMessageEvent, text: str = ""):
+    async def manbo(self, event: AstrMessageEvent, *text: str):
         """这是一个文本转语音（TTS）指令"""
-        # 去除首尾空白字符
-        text = text.strip()
+        # 将传入的文本参数拼接成一个字符串
+        text_str = " ".join(text).strip()
 
         # 校验文本是否为空字符串
-        if not text:
+        if not text_str:
             yield event.plain_result("请输入要转换为语音的文本！")
             return
 
         # 输入文本长度限制
-        if len(text) > MAX_TEXT_LENGTH:
+        if len(text_str) > MAX_TEXT_LENGTH:
             yield event.plain_result(f"文本长度超过限制（{MAX_TEXT_LENGTH} 字符）。请缩短文本再试。")
             return
 
         try:
             # 异步获取音频 URL
-            audio_url = await self.fetch_audio_url(text)
+            audio_url = await self.fetch_audio_url(text_str)
             if audio_url:
                 # 直接使用 Record.fromURL 来传递音频 URL
                 chain = [

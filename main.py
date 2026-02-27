@@ -6,7 +6,7 @@ from astrbot.core.message.components import Record
 
 # Manbo TTS API 信息
 MANBO_TTS_API_URL = "https://api.milorapart.top/apis/mbAIsc"
-MAX_TEXT_LENGTH = 1000  # 设置最大文本长度，避免请求过长
+MAX_TEXT_LENGTH = 100  # 设置最大文本长度，避免请求过长
 
 class ManboTTSPlugin(Star):
     def __init__(self, context: Context):

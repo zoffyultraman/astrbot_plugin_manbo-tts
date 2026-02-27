@@ -22,9 +22,12 @@ class ManboTTSPlugin(Star):
     async def manbo(self, event: AstrMessageEvent):
         """这是一个文本转语音（TTS）指令"""
         user_name = event.get_sender_name()
-        message_str = event.message_str.strip()  # 获取用户发送的文本消息
-        
-        if not message_str:
+        message_str = event.message_str.strip()  # 获取用户发送的完整消息
+
+        # 提取去掉命令部分的文本（去除 "!manbo" 前缀）
+        text_to_convert = message_str[len("!manbo"):].strip()
+
+        if not text_to_convert:
             yield event.plain_result("请输入要转换为语音的文本！")
             return
         
@@ -32,7 +35,7 @@ class ManboTTSPlugin(Star):
         try:
             response = requests.get(
                 MANBO_TTS_API_URL,
-                params={"text": message_str, "format": "wav"},  # 请求 WAV 格式
+                params={"text": text_to_convert, "format": "wav"},  # 请求 WAV 格式
                 timeout=30
             )
 

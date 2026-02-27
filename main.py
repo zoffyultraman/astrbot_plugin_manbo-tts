@@ -1,8 +1,10 @@
 import aiohttp
+import os
+import tempfile
 from astrbot.api.event import filter, AstrMessageEvent
 from astrbot.api.star import Context, Star
 from astrbot.api import logger
-from astrbot.core.message.components import File, Plain, Record
+from astrbot.core.message.components import Record
 
 # Manbo TTS API 信息
 MANBO_TTS_API_URL = "https://api.milorapart.top/apis/mbAIsc"
@@ -17,20 +19,38 @@ class ManboTTSPlugin(Star):
         self.session = aiohttp.ClientSession()
 
     async def fetch_audio_url(self, text_to_convert):
-        """异步获取音频 URL"""
-        async with self.session.get(MANBO_TTS_API_URL, params={"text": text_to_convert, "format": "wav"}) as response:
-            if response.status == 200:
-                if "application/json" in response.headers.get("Content-Type", ""):
+        """异步获取音频 URL，带有超时设置，使用 GET 请求"""
+        if not self.session:
+            logger.error("Session 未初始化")
+            return None
+
+        timeout = aiohttp.ClientTimeout(total=30, connect=10, sock_connect=10, sock_read=20)  # 设置超时
+        try:
+            async with self.session.get(
+                MANBO_TTS_API_URL,
+                params={"text": text_to_convert, "format": "wav"},
+                timeout=timeout,
+            ) as response:
+                if response.status == 200:
                     try:
-                        return await response.json()
+                        data = await response.json()
+                        if "url" in data:
+                            audio_url = data["url"]
+                            # 校验 URL 协议和格式
+                            if audio_url.startswith("http://") or audio_url.startswith("https://"):
+                                return data
+                            else:
+                                logger.error(f"非法的音频 URL：{audio_url}")
+                                return None
                     except Exception as e:
                         logger.error(f"JSON 解析错误: {str(e)}")
                         return None
                 else:
-                    logger.error("非 JSON 响应")
+                    logger.error(f"接口请求失败，状态码：{response.status}")
                     return None
-            else:
-                return None
+        except aiohttp.ClientError as e:
+            logger.error(f"请求异常：{str(e)}")
+            return None
 
     @filter.command("manbo")
     async def manbo(self, event: AstrMessageEvent):
@@ -58,7 +78,7 @@ class ManboTTSPlugin(Star):
             else:
                 yield event.plain_result("无法获取音频文件，接口返回无效数据。")
         except Exception as e:
-            logger.error(f"请求 Manbo TTS API 时出错: {str(e)}")
+            logger.error(f"处理请求时发生错误: {str(e)}")
             yield event.plain_result("发生了错误，请稍后再试。")
 
     async def terminate(self):

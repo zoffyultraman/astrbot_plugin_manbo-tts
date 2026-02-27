@@ -1,4 +1,5 @@
 import aiohttp
+import asyncio
 from astrbot.api.event import filter, AstrMessageEvent
 from astrbot.api.star import Context, Star
 from astrbot.api import logger
@@ -25,6 +26,7 @@ class ManboTTSPlugin(Star):
 
     async def fetch_audio_url(self, text_to_convert):
         """异步获取音频 URL，带有超时设置，使用 GET 请求"""
+        # 如果 session 未初始化或已关闭，则重新创建 session
         if not self.session or self.session.closed:
             logger.info("Session 未初始化或已关闭，正在初始化...")
             async with self.lock:
@@ -41,11 +43,12 @@ class ManboTTSPlugin(Star):
                 if response.status != 200:
                     logger.error(f"接口请求失败，状态码：{response.status}")
                     return None
+
                 try:
                     data = await response.json()
+                    # 校验 data 格式和 'url' 字段
                     if isinstance(data, dict) and "url" in data:
                         audio_url = data["url"]
-                        # 校验 URL 协议和格式，避免 SSRF
                         if self.is_valid_url(audio_url):
                             return audio_url
                         else:
@@ -66,8 +69,10 @@ class ManboTTSPlugin(Star):
         """校验 URL 是否为有效的外部 URL，避免 SSRF"""
         try:
             parsed_url = urlparse(url)
-            if parsed_url.scheme in ["http", "https"]:
+            # 校验是否为允许的 http/https 协议和域名
+            if parsed_url.scheme in ["http", "https"] and parsed_url.netloc in ALLOWED_DOMAINS:
                 return True
+            logger.error(f"不允许的域名或协议：{parsed_url.netloc}")
             return False
         except Exception as e:
             logger.error(f"URL 校验失败：{str(e)}")

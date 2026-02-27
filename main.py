@@ -36,6 +36,11 @@ class ManboTTSPlugin(Star):
                     self.session = aiohttp.ClientSession()
 
         try:
+            # 检查 session 是否已关闭，避免抛出 RuntimeError
+            if self.session.closed:
+                logger.error("会话已关闭，无法继续请求。")
+                return None
+
             async with self.session.get(
                 MANBO_TTS_API_URL,
                 params={"text": text_to_convert, "format": "wav"},
@@ -67,6 +72,9 @@ class ManboTTSPlugin(Star):
         except aiohttp.ClientError as e:
             logger.error(f"请求异常：{str(e)}")
             return None
+        except RuntimeError as e:
+            logger.error(f"会话已关闭，无法请求音频：{str(e)}")
+            return None
 
     @staticmethod
     def is_valid_url(url):
@@ -85,6 +93,9 @@ class ManboTTSPlugin(Star):
     @filter.command("manbo")
     async def manbo(self, event: AstrMessageEvent, text: str = ""):
         """这是一个文本转语音（TTS）指令"""
+        # 去除首尾空白字符
+        text = text.strip()
+
         # 校验文本是否为空字符串
         if not text:
             yield event.plain_result("请输入要转换为语音的文本！")

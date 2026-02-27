@@ -91,7 +91,7 @@ class ManboTTSPlugin(Star):
             return False
 
     @filter.command("manbo")
-    async def manbo(self, event: AstrMessageEvent, *text: str):
+    async def manbo(self, event: AstrMessageEvent, text: str = ""):
         """这是一个文本转语音（TTS）指令"""
         # 将传入的文本参数拼接成一个字符串
         text_str = " ".join(text).strip()

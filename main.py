@@ -28,11 +28,12 @@ class ManboTTSPlugin(Star):
 
     async def fetch_audio_url(self, text_to_convert):
         """异步获取音频 URL，带有超时设置，使用 GET 请求"""
-        # 如果 session 未初始化或已关闭，则重新创建 session
-        async with self.lock:
-            if not self.session or self.session.closed:
-                logger.info("Session 未初始化或已关闭，正在初始化...")
-                self.session = aiohttp.ClientSession()
+        # 双重检查锁定：首先检查 session 状态，只有在未初始化或已关闭时才加锁
+        if not self.session or self.session.closed:
+            async with self.lock:
+                if not self.session or self.session.closed:
+                    logger.info("Session 未初始化或已关闭，正在初始化...")
+                    self.session = aiohttp.ClientSession()
 
         try:
             async with self.session.get(

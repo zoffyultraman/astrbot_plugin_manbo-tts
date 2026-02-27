@@ -3,11 +3,12 @@ import os
 from astrbot.api.event import filter, AstrMessageEvent
 from astrbot.api.star import Context, Star, register
 from astrbot.api import logger
+import astrbot.api.message_components as Comp
 
 # Manbo TTS API 信息
 MANBO_TTS_API_URL = "https://api.milorapart.top/apis/mbAIsc"  # API 地址
 
-@register("manbo-tts", "zoffyultraman", "一个基于 Manbo TTS 的语音合成插件", "1.0.0")
+@register("manbo-tts", "YourName", "一个基于 Manbo TTS 的语音合成插件", "1.0.0")
 class ManboTTSPlugin(Star):
     def __init__(self, context: Context):
         super().__init__(context)
@@ -31,7 +32,7 @@ class ManboTTSPlugin(Star):
         try:
             response = requests.get(
                 MANBO_TTS_API_URL,
-                params={"text": message_str, "format": "mp3"},  # text 和 format 参数
+                params={"text": message_str, "format": "wav"},  # 请求 WAV 格式
                 timeout=30
             )
 
@@ -46,12 +47,16 @@ class ManboTTSPlugin(Star):
                     audio_response = requests.get(audio_url)
                     if audio_response.status_code == 200:
                         # 保存音频文件到本地
-                        filename = "output.mp3"
+                        filename = "output.wav"
                         with open(filename, 'wb') as f:
                             f.write(audio_response.content)
 
                         # 发送音频文件给用户
-                        yield event.plain_result(f"Hello, {user_name}, 这是你请求的语音消息：", file=filename)
+                        chain = [
+                            Comp.Plain(f"Hello, {user_name}, 这是你请求的语音消息："),
+                            Comp.Record(file=filename, url=filename)  # 使用 Record 组件发送音频
+                        ]
+                        yield event.chain_result(chain)
 
                         # 删除本地文件
                         os.remove(filename)

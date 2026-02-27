@@ -13,16 +13,18 @@ class ManboTTSPlugin(Star):
         super().__init__(context)
         self.session = None  # 初始化 session
 
-    async def initialize(self):
+    @filter.on_astrbot_loaded()  # 插件加载完成后初始化 session
+    async def on_loaded(self):
         """插件初始化，创建一个全局的 session"""
         if not self.session:
             self.session = aiohttp.ClientSession()
 
     async def fetch_audio_url(self, text_to_convert):
         """异步获取音频 URL，带有超时设置，使用 GET 请求"""
+        # 如果 session 未初始化，进行懒加载初始化
         if not self.session:
-            logger.error("Session 未初始化")
-            return None
+            logger.info("Session 未初始化，正在初始化...")
+            self.session = aiohttp.ClientSession()
 
         timeout = aiohttp.ClientTimeout(total=30, connect=10, sock_connect=10, sock_read=20)  # 设置超时
         try:
@@ -84,9 +86,6 @@ class ManboTTSPlugin(Star):
                 yield event.chain_result(chain)
             else:
                 yield event.plain_result("无法获取音频文件，接口返回无效数据。")
-        except aiohttp.ClientError as e:
-            logger.error(f"网络请求异常：{str(e)}")
-            yield event.plain_result("网络异常，请稍后再试。")
         except Exception as e:
             logger.error(f"处理请求时发生错误: {str(e)}")
             yield event.plain_result("发生了错误，请稍后再试。")

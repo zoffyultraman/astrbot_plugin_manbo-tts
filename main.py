@@ -10,6 +10,7 @@ from urllib.parse import urlparse
 MANBO_TTS_API_URL = "https://api.milorapart.top/apis/mbAIsc"
 MAX_TEXT_LENGTH = 200  # 设置最大文本长度，避免请求过长
 ALLOWED_DOMAINS = ["api.milorapart.top"]  # 允许的音频 URL 域名白名单
+TIMEOUT = aiohttp.ClientTimeout(total=30, connect=10, sock_connect=10, sock_read=20)  # 全局超时设置
 
 
 class ManboTTSPlugin(Star):
@@ -34,12 +35,11 @@ class ManboTTSPlugin(Star):
                 if not self.session or self.session.closed:
                     self.session = aiohttp.ClientSession()
 
-        timeout = aiohttp.ClientTimeout(total=30, connect=10, sock_connect=10, sock_read=20)  # 设置超时
         try:
             async with self.session.get(
                 MANBO_TTS_API_URL,
                 params={"text": text_to_convert, "format": "wav"},
-                timeout=timeout,
+                timeout=TIMEOUT,  # 使用全局 timeout
             ) as response:
                 if response.status != 200:
                     logger.error(f"接口请求失败，状态码：{response.status}")
@@ -83,15 +83,16 @@ class ManboTTSPlugin(Star):
             return False
 
     @filter.command("manbo")
-    async def manbo(self, event: AstrMessageEvent, text: str):
+    async def manbo(self, event: AstrMessageEvent, text: str = ""):
         """这是一个文本转语音（TTS）指令"""
+        # 校验文本是否为空字符串
+        if not text:
+            yield event.plain_result("请输入要转换为语音的文本！")
+            return
+
         # 输入文本长度限制
         if len(text) > MAX_TEXT_LENGTH:
             yield event.plain_result(f"文本长度超过限制（{MAX_TEXT_LENGTH} 字符）。请缩短文本再试。")
-            return
-
-        if not text:
-            yield event.plain_result("请输入要转换为语音的文本！")
             return
 
         try:

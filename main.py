@@ -29,11 +29,10 @@ class ManboTTSPlugin(Star):
     async def fetch_audio_url(self, text_to_convert):
         """异步获取音频 URL，带有超时设置，使用 GET 请求"""
         # 如果 session 未初始化或已关闭，则重新创建 session
-        if not self.session or self.session.closed:
-            logger.info("Session 未初始化或已关闭，正在初始化...")
-            async with self.lock:
-                if not self.session or self.session.closed:
-                    self.session = aiohttp.ClientSession()
+        async with self.lock:
+            if not self.session or self.session.closed:
+                logger.info("Session 未初始化或已关闭，正在初始化...")
+                self.session = aiohttp.ClientSession()
 
         try:
             async with self.session.get(
@@ -112,6 +111,7 @@ class ManboTTSPlugin(Star):
 
     async def terminate(self):
         """插件销毁时的清理工作"""
-        if self.session:
-            await self.session.close()  # 关闭 session
-            self.session = None  # 清空 session
+        async with self.lock:  # 添加锁来确保资源清理的并发安全
+            if self.session:
+                await self.session.close()  # 关闭 session
+                self.session = None  # 清空 session

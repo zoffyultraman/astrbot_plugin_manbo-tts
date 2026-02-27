@@ -11,6 +11,7 @@ MANBO_TTS_API_URL = "https://api.milorapart.top/apis/mbAIsc"
 MAX_TEXT_LENGTH = 200  # 设置最大文本长度，避免请求过长
 ALLOWED_DOMAINS = ["api.milorapart.top"]  # 允许的音频 URL 域名白名单
 
+
 class ManboTTSPlugin(Star):
     def __init__(self, context: Context):
         super().__init__(context)
@@ -60,6 +61,9 @@ class ManboTTSPlugin(Star):
                 except aiohttp.ContentTypeError:
                     logger.error("响应内容不是有效的 JSON")
                     return None
+        except asyncio.TimeoutError:
+            logger.error("请求超时")
+            return None
         except aiohttp.ClientError as e:
             logger.error(f"请求异常：{str(e)}")
             return None
@@ -101,9 +105,6 @@ class ManboTTSPlugin(Star):
                 yield event.chain_result(chain)
             else:
                 yield event.plain_result("无法获取音频文件，接口返回无效数据。")
-        except aiohttp.ClientError as e:
-            logger.error(f"网络请求异常：{str(e)}")
-            yield event.plain_result("网络异常，请稍后再试。")
         except Exception as e:
             logger.error(f"处理请求时发生错误: {str(e)}")
             yield event.plain_result("发生了错误，请稍后再试。")

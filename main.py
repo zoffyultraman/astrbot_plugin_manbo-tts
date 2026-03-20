@@ -6,124 +6,125 @@ from astrbot.api import logger
 from astrbot.core.message.components import Record
 from urllib.parse import urlparse
 
-# Manbo TTS API 信息
-MANBO_TTS_API_URL = "https://api.milorapart.top/apis/mbAIsc"
-MAX_TEXT_LENGTH = 200  # 设置最大文本长度，避免请求过长
-ALLOWED_DOMAINS = ["api.milorapart.top"]  # 允许的音频 URL 域名白名单
-TIMEOUT = aiohttp.ClientTimeout(total=30, connect=10, sock_connect=10, sock_read=20)  # 全局超时设置
+# ========== 核心修改1：替换API配置 ==========
+# 新的曼波TTS API信息
+MANBO_TTS_API_URL = "https://www.synapse.fan/api/ai/tts"  # 新API地址
+MAX_TEXT_LENGTH = 200  # 保持文本长度限制
+# 新的允许域名（根据新API返回的音频URL域名更新）
+ALLOWED_DOMAINS = ["synapse-space.oss-cn-beijing.aliyuncs.com"]  
+TIMEOUT = aiohttp.ClientTimeout(total=30, connect=10, sock_connect=10, sock_read=20)
 
 
 class ManboTTSPlugin(Star):
     def __init__(self, context: Context):
         super().__init__(context)
-        self.session = None  # 初始化 session
-        self.lock = asyncio.Lock()  # 锁，防止并发创建 session
+        self.session = None
+        self.lock = asyncio.Lock()
 
-    @filter.on_astrbot_loaded()  # 插件加载完成后初始化 session
+    @filter.on_astrbot_loaded()
     async def on_loaded(self):
-        """插件初始化，创建一个全局的 session"""
+        """插件初始化，创建全局session"""
         async with self.lock:
             if not self.session or self.session.closed:
                 self.session = aiohttp.ClientSession()
 
     async def fetch_audio_url(self, text_to_convert):
-        """异步获取音频 URL，带有超时设置，使用 GET 请求"""
-        # 双重检查锁定：首先检查 session 状态，只有在未初始化或已关闭时才加锁
+        """
+        核心修改2：适配新API的请求方式
+        新API是POST请求，参数格式不同，返回格式也不同
+        """
         if not self.session or self.session.closed:
             async with self.lock:
                 if not self.session or self.session.closed:
-                    logger.info("Session 未初始化或已关闭，正在初始化...")
+                    logger.info("Session未初始化或已关闭，正在重新创建...")
                     self.session = aiohttp.ClientSession()
 
         try:
-            # 检查 session 是否已关闭，避免抛出 RuntimeError
             if self.session.closed:
-                logger.error("会话已关闭，无法继续请求。")
+                logger.error("会话已关闭，无法发起请求")
                 return None
 
-            async with self.session.get(
+            # ========== 核心修改3：改为POST请求 + 新参数格式 ==========
+            async with self.session.post(
                 MANBO_TTS_API_URL,
-                params={"text": text_to_convert, "format": "wav"},
-                timeout=TIMEOUT,  # 使用全局 timeout
+                json={"text": text_to_convert, "voice": "manbo"},  # 新API的请求体
+                timeout=TIMEOUT,
+                headers={"Content-Type": "application/json"}  # 显式指定JSON格式
             ) as response:
                 if response.status != 200:
-                    logger.error(f"接口请求失败，状态码：{response.status}")
+                    logger.error(f"API请求失败，状态码：{response.status}，响应内容：{await response.text()}")
                     return None
 
                 try:
                     data = await response.json()
-                    # 校验 data 格式和 'url' 字段
-                    if isinstance(data, dict) and "url" in data:
-                        audio_url = data["url"]
-                        if self.is_valid_url(audio_url):
+                    # ========== 核心修改4：适配新API的返回格式 ==========
+                    # 新API返回格式：{"code":1,"data":{"url":"音频地址"}}
+                    if isinstance(data, dict) and data.get("code") == 1:
+                        audio_url = data.get("data", {}).get("url")
+                        if audio_url and self.is_valid_url(audio_url):
                             return audio_url
                         else:
-                            logger.error(f"非法的音频 URL：{audio_url}")
+                            logger.error(f"音频URL不存在或无效：{audio_url}")
                             return None
                     else:
-                        logger.error(f"返回的 JSON 格式无效，或缺少 'url' 字段：{data}")
+                        logger.error(f"API返回异常：{data}")
                         return None
                 except aiohttp.ContentTypeError:
-                    logger.error("响应内容不是有效的 JSON")
+                    logger.error("响应内容不是有效的JSON格式")
                     return None
         except asyncio.TimeoutError:
-            logger.error("请求超时")
+            logger.error("请求音频URL超时")
             return None
         except aiohttp.ClientError as e:
-            logger.error(f"请求异常：{str(e)}")
+            logger.error(f"HTTP请求异常：{str(e)}")
             return None
         except RuntimeError as e:
-            logger.error(f"会话已关闭，无法请求音频：{str(e)}")
+            logger.error(f"会话异常：{str(e)}")
             return None
 
     @staticmethod
     def is_valid_url(url):
-        """校验 URL 是否为有效的外部 URL，避免 SSRF"""
+        """
+        核心修改5：更新URL校验逻辑（适配新的音频域名）
+        """
         try:
             parsed_url = urlparse(url)
-            # 校验是否为允许的 http/https 协议和域名
+            # 校验协议和白名单域名
             if parsed_url.scheme in ["http", "https"] and parsed_url.netloc in ALLOWED_DOMAINS:
                 return True
-            logger.error(f"不允许的域名或协议：{parsed_url.netloc}")
+            logger.error(f"URL域名不在白名单内：{parsed_url.netloc}，允许的域名：{ALLOWED_DOMAINS}")
             return False
         except Exception as e:
-            logger.error(f"URL 校验失败：{str(e)}")
+            logger.error(f"URL校验失败：{str(e)}")
             return False
 
     @filter.command("manbo")
     async def manbo(self, event: AstrMessageEvent, text: str):
-        """这是一个文本转语音（TTS）指令"""
-        # 将传入的文本参数拼接成一个字符串
+        """manbo指令处理逻辑（无需修改）"""
         text_str = " ".join(text).strip()
 
-        # 校验文本是否为空字符串
         if not text_str:
             yield event.plain_result("请输入要转换为语音的文本！")
             return
 
-        # 输入文本长度限制
         if len(text_str) > MAX_TEXT_LENGTH:
             yield event.plain_result(f"文本长度超过限制（{MAX_TEXT_LENGTH} 字符）。请缩短文本再试。")
             return
 
         try:
-            # 异步获取音频 URL
             audio_url = await self.fetch_audio_url(text_str)
             if audio_url:
-                # 直接使用 Record.fromURL 来传递音频 URL
-                chain = [
-                    Record.fromURL(audio_url)  # 使用 URL 直接传递
-                ]
+                chain = [Record.fromURL(audio_url)]
                 yield event.chain_result(chain)
             else:
                 yield event.plain_result("无法获取音频文件，接口返回无效数据。")
         except Exception as e:
-            logger.error(f"处理请求时发生错误: {str(e)}")
+            logger.error(f"处理manbo指令时出错: {str(e)}")
             yield event.plain_result("发生了错误，请稍后再试。")
 
     async def terminate(self):
-        """插件销毁时的清理工作"""
-        async with self.lock:  # 添加锁来确保资源清理的并发安全
+        """插件销毁清理（无需修改）"""
+        async with self.lock:
             if self.session:
-                await self.session.close()  # 关闭 session
-                self.session = None  # 清空 session
+                await self.session.close()
+                self.session = None

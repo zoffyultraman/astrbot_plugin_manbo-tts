@@ -28,10 +28,7 @@
 
 **注意**：使用 synapse API 需要提供 `next-auth.session-token`。该 token 可以通过浏览器登录 https://www.synapse.fan 后，从开发者工具（F12）的 Application -> Cookies 中获取。将获取到的 token 值填入 `session_token` 配置项中。
 
-### synapse API 响应格式
-synapse API 支持两种响应格式：
-1. 直接返回URL格式：`{"url": "音频文件URL"}`
-2. 嵌套格式：`{"code": 1, "data": {"url": "音频文件URL"}}`
+### synapse API 
 
 如果 API 返回错误，请检查日志中的响应信息进行调试。常见的错误包括：
 - 认证失败（session_token 无效或过期）

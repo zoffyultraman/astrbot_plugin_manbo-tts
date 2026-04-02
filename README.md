@@ -31,4 +31,6 @@ print(f"文本: {text}")
 print(f"MD5: {md5}")
 ```
 输出文件名为 md5值.wav
+本库中cache/audio包含一个.wav文件，内容为“我去，不早说”
+文件名为计算后的md5数值，在mac/linux上应该通用，windows需要重新运算
 

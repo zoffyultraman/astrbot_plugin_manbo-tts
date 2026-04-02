@@ -1,6 +1,6 @@
 name: astrbot_plugin_manbo_tts 
 display_name: manbo-tts 
 desc: 基于外部API：https://api.milorapart.top/apis/mbAIsc 提供曼波语音信息生成 
-version: v1.0.3 
+version: v1.0.4
 author: zoffyultraman 
 repo: https://github.com/zoffyultraman/astrbot_plugin_manbo-tts 

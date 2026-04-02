@@ -1,8 +1,7 @@
 # 曼波语音插件
 ![GitHub release](https://img.shields.io/github/v/release/zoffyultraman/astrbot_plugin_manbo-tts)  
-支持多个外部API提供商：
+支持milorapart API：
 - milorapart: https://api.milorapart.top/apis/mbAIsc
-- synapse: https://www.synapse.fan/api/ai/tts
 
 提供曼波语音信息生成
 
@@ -21,19 +20,9 @@
 | 配置项 | 类型 | 说明 | 默认值 | 可选值 |
 |--------|------|------|--------|--------|
 | cache_enabled | bool | 是否启用音频缓存功能 | true | true/false |
-| api_provider | string | 选择TTS API提供商 | "milorapart" | "milorapart"（旧版API）或 "synapse"（新版API） |
-| session_token | string | 当api_provider为synapse时需要的认证token（next-auth.session-token） | "" | 任意字符串 |
 
-新版API (synapse) 使用POST请求，支持更稳定的服务。
-
-**注意**：使用 synapse API 需要提供 `next-auth.session-token`。该 token 可以通过浏览器登录 https://www.synapse.fan 后，从开发者工具（F12）的 Application -> Cookies 中获取。将获取到的 token 值填入 `session_token` 配置项中。
-
-### synapse API 
-
-如果 API 返回错误，请检查日志中的响应信息进行调试。常见的错误包括：
-- 认证失败（session_token 无效或过期）
-- 文本长度超限
-- API 服务暂时不可用
+## api相关
+训练了一个相关模型，准备搭建中，后续可能会提供相关api
 
 ## 缓存相关
 缓存目录

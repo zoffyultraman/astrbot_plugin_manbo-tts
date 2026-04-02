@@ -13,8 +13,9 @@ import astrbot.core.message.components as Comp
 
 # Manbo TTS API 信息
 MANBO_TTS_API_URL = "https://api.milorapart.top/apis/mbAIsc"
+SYNAPSE_TTS_API_URL = "https://www.synapse.fan/api/ai/tts"
 MAX_TEXT_LENGTH = 200  # 设置最大文本长度，避免请求过长
-ALLOWED_DOMAINS = ["api.milorapart.top"]  # 允许的音频 URL 域名白名单
+ALLOWED_DOMAINS = ["api.milorapart.top", "synapse-space.oss-cn-beijing.aliyun.com", "synapse-space.oss-cn-beijing.aliyuncs.com"]  # 允许的音频 URL 域名白名单
 TIMEOUT = aiohttp.ClientTimeout(total=30, connect=10, sock_connect=10, sock_read=20)  # 全局超时设置
 
 
@@ -25,6 +26,8 @@ class ManboTTSPlugin(Star):
         super().__init__(context)
         self.config = config or {}
         self.cache_enabled = self.config.get("cache_enabled", True)
+        self.api_provider = self.config.get("api_provider", "milorapart")
+        self.session_token = self.config.get("session_token", "")
 
         # 根据AstrBot规范，大文件存储在 data/plugin_data/{plugin_name}/ 目录下
         # 不再提供自定义缓存目录选项，所有缓存文件统一存储到规范目录
@@ -32,7 +35,10 @@ class ManboTTSPlugin(Star):
         self.cache_dir = str((data_path / "plugin_data" / self.PLUGIN_NAME / "audio_cache").resolve())
 
         logger.info(f"缓存功能启用: {self.cache_enabled}")
+        logger.info(f"API提供商: {self.api_provider}")
         logger.info(f"缓存目录（规范路径）: {self.cache_dir}")
+        if self.api_provider == "synapse":
+            logger.info(f"Synapse session_token 已设置: {'是' if self.session_token else '否'}")
 
         self.session = None
         self.lock = asyncio.Lock()
@@ -99,7 +105,7 @@ class ManboTTSPlugin(Star):
             return False
 
     async def fetch_audio_url(self, text_to_convert):
-        """异步获取音频 URL，带有超时设置，使用 GET 请求"""
+        """异步获取音频 URL，带有超时设置，根据api_provider选择API"""
         # 双重检查锁定：首先检查 session 状态，只有在未初始化或已关闭时才加锁
         if not self.session or self.session.closed:
             async with self.lock:
@@ -113,31 +119,120 @@ class ManboTTSPlugin(Star):
                 logger.error("会话已关闭，无法继续请求。")
                 return None
 
-            async with self.session.get(
-                MANBO_TTS_API_URL,
-                params={"text": text_to_convert, "format": "wav"},
-                timeout=TIMEOUT,  # 使用全局 timeout
-            ) as response:
-                if response.status != 200:
-                    logger.error(f"接口请求失败，状态码：{response.status}")
-                    return None
-
-                try:
-                    data = await response.json()
-                    # 校验 data 格式和 'url' 字段
-                    if isinstance(data, dict) and "url" in data:
-                        audio_url = data["url"]
-                        if self.is_valid_url(audio_url):
-                            return audio_url
-                        else:
-                            logger.error(f"非法的音频 URL：{audio_url}")
-                            return None
-                    else:
-                        logger.error(f"返回的 JSON 格式无效，或缺少 'url' 字段：{data}")
+            # 根据API提供商选择不同的请求方式
+            if self.api_provider == "milorapart":
+                logger.info(f"使用 milorapart API，文本长度：{len(text_to_convert)}")
+                async with self.session.get(
+                    MANBO_TTS_API_URL,
+                    params={"text": text_to_convert, "format": "wav"},
+                    timeout=TIMEOUT,  # 使用全局 timeout
+                ) as response:
+                    if response.status != 200:
+                        logger.error(f"milorapart接口请求失败，状态码：{response.status}")
                         return None
-                except aiohttp.ContentTypeError:
-                    logger.error("响应内容不是有效的 JSON")
-                    return None
+
+                    try:
+                        data = await response.json()
+                        # 校验 data 格式和 'url' 字段
+                        if isinstance(data, dict) and "url" in data:
+                            audio_url = data["url"]
+                            if self.is_valid_url(audio_url):
+                                return audio_url
+                            else:
+                                logger.error(f"非法的音频 URL：{audio_url}")
+                                return None
+                        else:
+                            logger.error(f"返回的 JSON 格式无效，或缺少 'url' 字段：{data}")
+                            return None
+                    except aiohttp.ContentTypeError:
+                        logger.error("响应内容不是有效的 JSON")
+                        return None
+            elif self.api_provider == "synapse":
+                logger.info(f"使用 synapse API，文本长度：{len(text_to_convert)}")
+                # 检查session token是否设置
+                if not self.session_token:
+                    logger.warning("session_token 未设置，synapse API可能需要认证")
+
+                # 新API使用POST请求，JSON请求体
+                json_data = {"text": text_to_convert, "voice": "manbo"}
+                headers = {
+                    "Content-Type": "application/json",
+                    "User-Agent": "Mozilla/5.0",
+                    "Accept": "application/json"
+                }
+                # 添加session token cookie
+                if self.session_token:
+                    headers["Cookie"] = f"next-auth.session-token={self.session_token}"
+                    logger.info("已添加 session_token cookie")
+                else:
+                    logger.info("未设置 session_token，使用无认证请求")
+
+                logger.info(f"请求URL: {SYNAPSE_TTS_API_URL}")
+                logger.info(f"请求头: { {k: v for k, v in headers.items() if k != 'Cookie'} }")
+
+                async with self.session.post(
+                    SYNAPSE_TTS_API_URL,
+                    json=json_data,
+                    timeout=TIMEOUT,
+                    headers=headers
+                ) as response:
+                    logger.info(f"响应状态码: {response.status}")
+                    if response.status != 200:
+                        # 尝试读取错误响应
+                        try:
+                            error_text = await response.text()
+                            logger.error(f"synapse接口请求失败，状态码：{response.status}，响应: {error_text[:200]}")
+                        except:
+                            logger.error(f"synapse接口请求失败，状态码：{response.status}")
+                        return None
+
+                    try:
+                        data = await response.json()
+                        logger.info(f"响应JSON: {data}")
+
+                        # 支持两种可能的响应格式：
+                        # 1. {"code": 1, "data": {"url": "音频地址"}}
+                        # 2. {"url": "音频地址"} (直接返回URL)
+
+                        # 先检查是否有直接url字段
+                        if isinstance(data, dict) and "url" in data:
+                            audio_url = data["url"]
+                            logger.info(f"从直接url字段获取音频URL: {audio_url}")
+                            if self.is_valid_url(audio_url):
+                                return audio_url
+                            else:
+                                logger.error(f"非法的音频 URL：{audio_url}")
+                                return None
+
+                        # 检查嵌套格式
+                        if isinstance(data, dict) and data.get("code") == 1:
+                            if "data" in data and isinstance(data["data"], dict) and "url" in data["data"]:
+                                audio_url = data["data"]["url"]
+                                logger.info(f"从data.url字段获取音频URL: {audio_url}")
+                                if self.is_valid_url(audio_url):
+                                    return audio_url
+                                else:
+                                    logger.error(f"非法的音频 URL：{audio_url}")
+                                    return None
+                            else:
+                                logger.error(f"返回的 JSON 格式无效，或缺少 'data.url' 字段：{data}")
+                                return None
+                        else:
+                            # 检查code字段是否存在
+                            code_value = data.get("code") if isinstance(data, dict) else "not a dict"
+                            logger.error(f"synapse API 返回错误或非成功状态，code: {code_value}, 完整响应: {data}")
+                            return None
+                    except aiohttp.ContentTypeError:
+                        # 如果不是JSON，尝试读取文本响应
+                        try:
+                            text_response = await response.text()
+                            logger.error(f"响应内容不是有效的 JSON，响应文本: {text_response[:200]}")
+                        except:
+                            logger.error("响应内容不是有效的 JSON，且无法读取文本")
+                        return None
+            else:
+                logger.error(f"未知的API提供商：{self.api_provider}")
+                return None
         except asyncio.TimeoutError:
             logger.error("请求超时")
             return None
@@ -153,8 +248,11 @@ class ManboTTSPlugin(Star):
         """校验 URL 是否为有效的外部 URL，避免 SSRF"""
         try:
             parsed_url = urlparse(url)
+            logger.info(f"URL 校验: 原始URL={url}, 协议={parsed_url.scheme}, 域名={parsed_url.netloc}")
+            logger.info(f"允许的域名列表: {ALLOWED_DOMAINS}")
             # 校验是否为允许的 http/https 协议和域名
             if parsed_url.scheme in ["http", "https"] and parsed_url.netloc in ALLOWED_DOMAINS:
+                logger.info("URL 校验通过")
                 return True
             logger.error(f"不允许的域名或协议：{parsed_url.netloc}")
             return False

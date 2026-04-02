@@ -3,5 +3,17 @@
       "type": "bool",
       "description": "是否启用音频缓存功能。启用后音频文件将存储在规范目录：data/plugin_data/astrbot_plugin_manbo_tts/audio_cache",
       "default": true
+    },
+    "api_provider": {
+      "type": "string",
+      "description": "选择TTS API提供商：milorapart（旧版）或synapse（新版）",
+      "default": "milorapart",
+      "options": ["milorapart", "synapse"]
+    },
+    "session_token": {
+      "type": "string",
+      "description": "当api_provider为synapse时需要的认证token（next-auth.session-token）",
+      "default": "",
+      "optional": true
     }
 }

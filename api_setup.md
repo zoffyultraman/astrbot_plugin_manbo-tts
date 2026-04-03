@@ -1,5 +1,9 @@
 # GPT-SoVITS CPU 环境部署指南 (Ubuntu 24.04)
 
+下载地址：
+https://pan.baidu.com/s/1b6hvqwUaRAZkBBNraNDArA?pwd=guxk
+提取码: guxk 
+
 本指南针对 Ubuntu 24.04 (Python 3.12) 环境，提供完整的 GPT-SoVITS 部署方案，解决 CPU 服务器上的常见安装问题。
 
 ## 一、系统初始化（内存与编译准备）

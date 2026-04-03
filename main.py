@@ -3,7 +3,7 @@ import asyncio
 import hashlib
 import os
 import pathlib
-from urllib.parse import urlparse
+from urllib.parse import urlparse, urlencode, urlunparse, parse_qs
 from typing import Optional
 from astrbot.api.event import filter, AstrMessageEvent
 from astrbot.api.star import Context, Star
@@ -25,6 +25,15 @@ class ManboTTSPlugin(Star):
         super().__init__(context)
         self.config = config or {}
         self.cache_enabled = self.config.get("cache_enabled", True)
+        self.custom_api_url = self.config.get("custom_api_url", "")
+        # 提取自定义API的域名用于URL验证
+        self.custom_api_domain = ""
+        if self.custom_api_url:
+            try:
+                parsed = urlparse(self.custom_api_url)
+                self.custom_api_domain = parsed.netloc
+            except Exception as e:
+                logger.warning(f"解析自定义API URL失败: {e}")
 
         # 根据AstrBot规范，大文件存储在 data/plugin_data/{plugin_name}/ 目录下
         # 不再提供自定义缓存目录选项，所有缓存文件统一存储到规范目录
@@ -98,6 +107,23 @@ class ManboTTSPlugin(Star):
                 cache_path.unlink()
             return False
 
+    def _build_custom_api_url(self, text: str) -> str:
+        """构建自定义API的完整URL"""
+        parsed = urlparse(self.custom_api_url)
+        # 获取现有查询参数
+        existing_params = parse_qs(parsed.query)
+        # 添加或覆盖参数
+        existing_params['text'] = [text]
+        existing_params['text_language'] = ['zh']
+        # 构建新查询字符串
+        new_query = urlencode(existing_params, doseq=True)
+        # 重建URL
+        new_parsed = parsed._replace(query=new_query)
+        # 确保路径部分不为空（避免http://example.com?query形式）
+        if not new_parsed.path:
+            new_parsed = new_parsed._replace(path='/')
+        return urlunparse(new_parsed)
+
     async def fetch_audio_url(self, text_to_convert):
         """异步获取音频 URL，带有超时设置"""
         # 双重检查锁定：首先检查 session 状态，只有在未初始化或已关闭时才加锁
@@ -113,32 +139,44 @@ class ManboTTSPlugin(Star):
                 logger.error("会话已关闭，无法继续请求。")
                 return None
 
-            logger.info(f"使用 milorapart API，文本长度：{len(text_to_convert)}")
-            async with self.session.get(
-                MANBO_TTS_API_URL,
-                params={"text": text_to_convert, "format": "wav"},
-                timeout=TIMEOUT,  # 使用全局 timeout
-            ) as response:
-                if response.status != 200:
-                    logger.error(f"milorapart接口请求失败，状态码：{response.status}")
+            # 根据配置选择 API
+            if self.custom_api_url:
+                logger.info(f"使用自定义 API，文本长度：{len(text_to_convert)}")
+                # 构建自定义 API 请求 URL
+                audio_url = self._build_custom_api_url(text_to_convert)
+                # 验证 URL 是否允许
+                if self.is_valid_url(audio_url):
+                    return audio_url
+                else:
+                    logger.error(f"自定义 API URL 未通过验证：{audio_url}")
                     return None
-
-                try:
-                    data = await response.json()
-                    # 校验 data 格式和 'url' 字段
-                    if isinstance(data, dict) and "url" in data:
-                        audio_url = data["url"]
-                        if self.is_valid_url(audio_url):
-                            return audio_url
-                        else:
-                            logger.error(f"非法的音频 URL：{audio_url}")
-                            return None
-                    else:
-                        logger.error(f"返回的 JSON 格式无效，或缺少 'url' 字段：{data}")
+            else:
+                logger.info(f"使用 milorapart API，文本长度：{len(text_to_convert)}")
+                async with self.session.get(
+                    MANBO_TTS_API_URL,
+                    params={"text": text_to_convert, "format": "wav"},
+                    timeout=TIMEOUT,  # 使用全局 timeout
+                ) as response:
+                    if response.status != 200:
+                        logger.error(f"milorapart接口请求失败，状态码：{response.status}")
                         return None
-                except aiohttp.ContentTypeError:
-                    logger.error("响应内容不是有效的 JSON")
-                    return None
+
+                    try:
+                        data = await response.json()
+                        # 校验 data 格式和 'url' 字段
+                        if isinstance(data, dict) and "url" in data:
+                            audio_url = data["url"]
+                            if self.is_valid_url(audio_url):
+                                return audio_url
+                            else:
+                                logger.error(f"非法的音频 URL：{audio_url}")
+                                return None
+                        else:
+                            logger.error(f"返回的 JSON 格式无效，或缺少 'url' 字段：{data}")
+                            return None
+                    except aiohttp.ContentTypeError:
+                        logger.error("响应内容不是有效的 JSON")
+                        return None
         except asyncio.TimeoutError:
             logger.error("请求超时")
             return None
@@ -149,15 +187,17 @@ class ManboTTSPlugin(Star):
             logger.error(f"会话已关闭，无法请求音频：{str(e)}")
             return None
 
-    @staticmethod
-    def is_valid_url(url):
+    def is_valid_url(self, url):
         """校验 URL 是否为有效的外部 URL，避免 SSRF"""
         try:
             parsed_url = urlparse(url)
             logger.info(f"URL 校验: 原始URL={url}, 协议={parsed_url.scheme}, 域名={parsed_url.netloc}")
-            logger.info(f"允许的域名列表: {ALLOWED_DOMAINS}")
+            allowed_domains = ALLOWED_DOMAINS.copy()
+            if self.custom_api_domain:
+                allowed_domains.append(self.custom_api_domain)
+            logger.info(f"允许的域名列表: {allowed_domains}")
             # 校验是否为允许的 http/https 协议和域名
-            if parsed_url.scheme in ["http", "https"] and parsed_url.netloc in ALLOWED_DOMAINS:
+            if parsed_url.scheme in ["http", "https"] and parsed_url.netloc in allowed_domains:
                 logger.info("URL 校验通过")
                 return True
             logger.error(f"不允许的域名或协议：{parsed_url.netloc}")
@@ -239,3 +279,8 @@ class ManboTTSPlugin(Star):
             if self.session:
                 await self.session.close()  # 关闭 session
                 self.session = None  # 清空 session
+
+
+
+
+

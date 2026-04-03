@@ -1,7 +1,8 @@
 # 曼波语音插件
 ![GitHub release](https://img.shields.io/github/v/release/zoffyultraman/astrbot_plugin_manbo-tts)  
-支持milorapart API：
+支持milorapart API或自定义TTS API：
 - milorapart: https://api.milorapart.top/apis/mbAIsc
+- 自定义API：直接返回音频文件的HTTP接口，支持text和text_language参数
 
 提供曼波语音信息生成
 
@@ -20,9 +21,10 @@
 | 配置项 | 类型 | 说明 | 默认值 | 可选值 |
 |--------|------|------|--------|--------|
 | cache_enabled | bool | 是否启用音频缓存功能 | true | true/false |
+| custom_api_url | string | 自定义TTS API地址，如果设置则使用此接口，否则使用默认的milorapart API。自定义接口应直接返回音频文件，支持text和text_language参数。 | "" | 任意有效的HTTP URL |
 
 ## api相关
-训练了一个相关模型，准备搭建中，后续可能会提供相关api
+看了下决定不提供api了，但是稍后会提供一个打包好的模型，大家自行搭建即可。
 
 ## 缓存相关
 缓存目录

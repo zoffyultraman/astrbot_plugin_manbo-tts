@@ -3,5 +3,10 @@
       "type": "bool",
       "description": "是否启用音频缓存功能。启用后音频文件将存储在规范目录：data/plugin_data/astrbot_plugin_manbo_tts/audio_cache",
       "default": true
+    },
+    "custom_api_url": {
+      "type": "string",
+      "description": "自定义TTS API地址，如果设置则使用此接口，否则使用默认的milorapart API。自定义接口应直接返回音频文件，支持text和text_language参数。",
+      "default": ""
     }
 }

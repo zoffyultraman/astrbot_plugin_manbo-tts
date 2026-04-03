@@ -117,8 +117,69 @@ python3 api.py \
 
 ## 六、维护建议
 
-**持久化虚拟内存配置**：将 `/www/swapfile swap swap defaults 0 0` 写入 `/etc/fstab`。
+**持久化虚拟内存配置**：
+将 `/www/swapfile swap swap defaults 0 0` 写入 `/etc/fstab`。
 
-**首次请求延迟**：重启服务后的第一次请求涉及模型从 Swap 换入内存，耗时 10-30s 属于正常现象，后续请求将恢复正常速度。
+**首次请求延迟**：
+重启服务后的第一次请求涉及模型从 Swap 换入内存，耗时 10-30s 属于正常现象，后续请求将恢复正常速度。
 
-**CPU 线程控制**：若 CPU 占用过高导致系统卡顿，可在启动前运行 `export OMP_NUM_THREADS=4` 限制并行线程数。
+**CPU 线程控制**：
+若 CPU 占用过高导致系统卡顿，可在启动前运行 `export OMP_NUM_THREADS=4` 限制并行线程数。
+
+**制作成服务**：
+#### 1.创建Service配置文件
+使用 sudo 创建一个名为 gpt-sovits.service 的文件：
+```bash
+sudo vi /etc/systemd/system/gpt-sovits.service
+```
+
+#### 2.写入配置内容
+请根据你的实际路径修改 WorkingDirectory 和 ExecStart（假设你的项目在 /www/GPT-SoVITS）：
+```ini
+[Unit]
+Description=GPT-SoVITS-API Service
+After=network.target
+
+[Service]
+# 指定运行用户（建议用你的常用用户名，避免 root）
+User=root
+Group=root
+
+# 项目根目录
+WorkingDirectory=/www/GPT-SoVITS
+
+# 启动命令：指向虚拟环境中的 python 解释器
+# 注意修改 -s -g -dr 等参数为你真实的模型和音频路径
+ExecStart=/www/GPT-SoVITS/venv/bin/python3 api.py \
+    -s "weights/my_model/manbo_e8_s168.pth" \
+    -g "weights/my_model/manbo-e10.ckpt" \
+    -dr "weights/my_model/40a4fb1be1d56efe3601fc6179dc9772.wav" \
+    -dt "我要开始表演了，打开你们的摄像头" \
+    -dl "zh" \
+    -d "cpu" \
+    -a "0.0.0.0" \
+    -p 9880
+
+# 崩溃后自动重启，等待 10 秒
+Restart=always
+RestartSec=10
+
+# 标准输出与错误日志
+StandardOutput=append:/var/log/gpt_sovits.log
+StandardError=append:/var/log/gpt_sovits.log
+
+[Install]
+WantedBy=multi-user.target
+```
+
+#### 3.激活并启动服务
+```bash
+# 1. 重新加载系统服务配置
+sudo systemctl daemon-reload
+
+# 2. 设置开机自启
+sudo systemctl enable gpt-sovits
+
+# 3. 立即启动服务
+sudo systemctl start gpt-sovits
+```

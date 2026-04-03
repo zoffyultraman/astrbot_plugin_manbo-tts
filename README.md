@@ -2,7 +2,7 @@
 ![GitHub release](https://img.shields.io/github/v/release/zoffyultraman/astrbot_plugin_manbo-tts)  
 支持milorapart API或自定义TTS API：
 - milorapart: https://api.milorapart.top/apis/mbAIsc
-- 自定义API：直接返回音频文件的HTTP接口，支持text和text_language参数
+- 自定义API：直接返回音频文件的HTTP接口，支持text和text_language参数（[部署指南](api_setup.md)）
 
 提供曼波语音信息生成
 
@@ -21,10 +21,10 @@
 | 配置项 | 类型 | 说明 | 默认值 | 可选值 |
 |--------|------|------|--------|--------|
 | cache_enabled | bool | 是否启用音频缓存功能 | true | true/false |
-| custom_api_url | string | 自定义TTS API地址，如果设置则使用此接口，否则使用默认的milorapart API。自定义接口应直接返回音频文件，支持text和text_language参数。 | "" | 任意有效的HTTP URL |
+| custom_api_url | string | 自定义TTS API地址，如果设置则使用此接口，否则使用默认的milorapart API。自定义接口应直接返回音频文件，支持text和text_language参数。如需自建API服务，请参考[API部署指南](api_setup.md)。 | "" | 任意有效的HTTP URL |
 
 ## api相关
-看了下决定不提供api了，但是稍后会提供一个打包好的模型，大家自行搭建即可。
+目前不提供公共API服务，但会发布预训练模型供用户自行部署。详细的GPT-SoVITS环境部署指南请参考 [API部署文档](api_setup.md)。
 
 ## 缓存相关
 缓存目录

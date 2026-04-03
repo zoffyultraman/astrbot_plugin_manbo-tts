@@ -1,6 +1,9 @@
 # GPT-SoVITS CPU 环境部署与恢复指南
 
 本指南用于将已调优好的 GPT-SoVITS 环境迁移至新的 Ubuntu 24.04 (CPU) 服务器。
+通过网盘分享的文件：gpt_sovits_cpu_backup.tar.gz
+链接: https://pan.baidu.com/s/1b6hvqwUaRAZkBBNraNDArA?pwd=guxk 提取码: guxk
+
 
 ## 一、环境预检查（重要）
 

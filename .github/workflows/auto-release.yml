@@ -63,12 +63,15 @@ jobs:
             git tag $NEW_TAG
             git push origin $NEW_TAG
           fi
+          # 验证标签已推送
+          echo "验证标签已推送到远程："
+          git ls-remote --tags origin | grep $NEW_TAG
 
       # 4️⃣ 创建 Release
       - name: 创建 Release
-        uses: ncipollo/release-action@v1
+        uses: softprops/action-gh-release@v2
         with:
-          tag: ${{ steps.version.outputs.NEW_TAG }}
+          tag_name: ${{ steps.version.outputs.NEW_TAG }}
           name: ${{ steps.version.outputs.NEW_TAG }}
           token: ${{ secrets.AUTO_RELEASE }}
           draft: false
@@ -84,4 +87,5 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: astrbot_plugin_manbo-tts-${{ steps.version.outputs.NEW_TAG }}.zip
+          tag_name: ${{ steps.version.outputs.NEW_TAG }}
           token: ${{ secrets.AUTO_RELEASE }}

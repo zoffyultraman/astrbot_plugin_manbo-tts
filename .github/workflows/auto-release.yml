@@ -1,4 +1,4 @@
-name: Auto Release Zip
+name: Auto Release Zip (Full SemVer)
 
 on:
   push:
@@ -9,23 +9,46 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # 1️⃣ Checkout 仓库（fetch all tags）
+      # 1️⃣ Checkout 仓库（完整历史）
       - name: Checkout
         uses: actions/checkout@v4
         with:
           token: ${{ secrets.AUTO_RELEASE }}
-          fetch-depth: 0  # 获取完整历史和所有 tags
+          fetch-depth: 0
 
-      # 2️⃣ 生成递增版本号
-      - name: 生成递增版本号
+      # 2️⃣ 生成 SemVer 自动递增版本号
+      - name: 生成 SemVer 版本号
         id: version
         run: |
-          LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0")
+          # 版本上限
+          MAX_PATCH=9
+          MAX_MINOR=9
+
+          # 获取最新 tag
+          LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "v1.0.0")
           echo "Latest tag: $LAST_TAG"
-          LAST_NUM=${LAST_TAG#v}
-          NEW_NUM=$((LAST_NUM + 1))
-          NEW_TAG="v$NEW_NUM"
+
+          # 提取 major, minor, patch
+          IFS='.' read -r MAJOR MINOR PATCH <<< "${LAST_TAG#v}"
+
+          # patch +1
+          PATCH=$((PATCH + 1))
+
+          # patch 超上限 -> patch=0, minor+1
+          if [ $PATCH -gt $MAX_PATCH ]; then
+            PATCH=0
+            MINOR=$((MINOR + 1))
+          fi
+
+          # minor 超上限 -> minor=0, major+1
+          if [ $MINOR -gt $MAX_MINOR ]; then
+            MINOR=0
+            MAJOR=$((MAJOR + 1))
+          fi
+
+          NEW_TAG="v$MAJOR.$MINOR.$PATCH"
           echo "NEW_TAG=$NEW_TAG" >> $GITHUB_OUTPUT
+          echo "生成新 tag: $NEW_TAG"
 
       # 3️⃣ Push tag 到远程
       - name: Push tag
@@ -33,6 +56,7 @@ jobs:
           git config user.name "github-actions"
           git config user.email "github-actions@github.com"
           NEW_TAG=${{ steps.version.outputs.NEW_TAG }}
+          # 避免重复 tag
           if git ls-remote --tags origin | grep -q "refs/tags/$NEW_TAG"; then
             echo "Tag $NEW_TAG already exists, skipping push"
           else

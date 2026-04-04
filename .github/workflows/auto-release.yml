@@ -1,0 +1,48 @@
+name: Auto Release Zip
+
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+
+    steps:
+      # 1️⃣ 拉取仓库
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # 2️⃣ 获取最新 tag，生成递增版本号
+      - name: 生成递增版本号
+        id: version
+        run: |
+          # 获取最新 tag，如果没有则从 v0 开始
+          LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0")
+          echo "Latest tag: $LAST_TAG"
+          # 提取数字部分
+          LAST_NUM=${LAST_TAG#v}
+          # 新版本号 +1
+          NEW_NUM=$((LAST_NUM + 1))
+          NEW_TAG="v$NEW_NUM"
+          echo "NEW_TAG=$NEW_TAG" >> $GITHUB_OUTPUT
+
+      # 3️⃣ 创建 Release
+      - name: 创建 Release
+        uses: ncipollo/release-action@v1
+        with:
+          tag: ${{ steps.version.outputs.NEW_TAG }}
+          name: ${{ steps.version.outputs.NEW_TAG }}
+          draft: false
+          prerelease: false
+
+      # 4️⃣ 打包仓库为 zip
+      - name: 打包仓库
+        run: |
+          zip -r astrbot_plugin_manbo-tts-${{ steps.version.outputs.NEW_TAG }}.zip . -x "*.git*" "*.github*"
+
+      # 5️⃣ 上传 zip 到 Release
+      - name: 上传 zip 到 Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: astrbot_plugin_manbo-tts-${{ steps.version.outputs.NEW_TAG }}.zip

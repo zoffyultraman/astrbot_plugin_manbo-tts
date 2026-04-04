@@ -12,6 +12,8 @@ jobs:
       # 1️⃣ Checkout
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.AUTO_RELEASE }}   # 用你在 Secrets 里存的 PAT
 
       # 2️⃣ 生成递增版本号
       - name: 生成递增版本号

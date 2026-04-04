@@ -33,6 +33,7 @@ jobs:
         with:
           tag: ${{ steps.version.outputs.NEW_TAG }}
           name: ${{ steps.version.outputs.NEW_TAG }}
+          token: ${{ secrets.AUTO_RELEASE }}
           draft: false
           prerelease: false
 

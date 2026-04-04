@@ -73,6 +73,7 @@ jobs:
         with:
           tag_name: ${{ steps.version.outputs.NEW_TAG }}
           name: ${{ steps.version.outputs.NEW_TAG }}
+          generate_release_notes: true
           token: ${{ secrets.AUTO_RELEASE }}
           draft: false
           prerelease: false

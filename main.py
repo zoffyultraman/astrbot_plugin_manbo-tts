@@ -351,27 +351,82 @@ class ManboTTSPlugin(Star):
             known_files = len([text for text in mapping.values() if text != "[unknown]"])
             unknown_files = total_files - known_files
 
-            # 构建输出消息
-            output = f"📊 缓存统计:\n"
-            output += f"• 总缓存文件数: {total_files}\n"
-            output += f"• 已知文本文件: {known_files}\n"
-            output += f"• 未知文本文件: {unknown_files}\n\n"
+            # 构建HTML输出
+            html_content = f"""<!DOCTYPE html>
+<html>
+<head>
+<style>
+body {{ font-family: sans-serif; margin: 20px; }}
+table {{ border-collapse: collapse; width: 100%; margin-bottom: 20px; }}
+th, td {{ border: 1px solid #ddd; padding: 8px; text-align: left; }}
+th {{ background-color: #f2f2f2; }}
+ul {{ list-style-type: none; padding-left: 0; }}
+li {{ padding: 2px 0; font-family: monospace; }}
+</style>
+</head>
+<body>
+<h2>缓存统计</h2>
+<p><strong>总缓存文件数:</strong> {total_files}</p>
+<p><strong>已知文本文件:</strong> {known_files}</p>
+<p><strong>未知文本文件:</strong> {unknown_files}</p>
+"""
 
             if known_files > 0:
-                output += "📋 缓存内容列表:\n"
-                for i, (md5_hash, text) in enumerate(mapping.items(), 1):
+                html_content += """<h3>缓存内容列表</h3>
+<table>
+<tr><th>#</th><th>文本</th><th>MD5哈希</th></tr>
+"""
+                row_num = 1
+                for md5_hash, text in mapping.items():
                     if text != "[unknown]":
-                        # 截断长文本
-                        display_text = text if len(text) <= 50 else text[:47] + "..."
-                        output += f"{i}. {display_text}\n"
+                        # 转义文本，防止XSS
+                        escaped_text = text.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;').replace('"', '&quot;')
+                        # 截断显示文本，但保留完整文本在title属性中
+                        display_text = escaped_text if len(escaped_text) <= 50 else escaped_text[:47] + "..."
+                        html_content += f'<tr><td>{row_num}</td><td title="{escaped_text}">{display_text}</td><td>{md5_hash}</td></tr>\n'
+                        row_num += 1
+                html_content += "</table>\n"
 
             if unknown_files > 0:
-                output += f"\n⚠️  有 {unknown_files} 个缓存文件缺少文本信息（可能是旧版本创建的缓存）\n"
-                output += f"   这些文件的MD5哈希为: {', '.join([md5 for md5, text in mapping.items() if text == '[unknown]'][:10])}"
-                if unknown_files > 10:
-                    output += f" 等（共{unknown_files}个）"
+                html_content += f'<h3>未知文本文件</h3>\n<p>以下 {unknown_files} 个缓存文件缺少文本信息（可能是旧版本创建的缓存）</p>\n<ul>\n'
+                unknown_md5_list = [md5 for md5, text in mapping.items() if text == '[unknown]']
+                for md5 in unknown_md5_list[:50]:  # 最多显示50个
+                    html_content += f'<li>{md5}</li>\n'
+                if unknown_files > 50:
+                    html_content += f'<li>... 等（共{unknown_files}个）</li>\n'
+                html_content += '</ul>\n'
 
-            yield event.plain_result(output)
+            html_content += """</body>
+</html>"""
+
+            # 按照文档示例使用text_to_image方法渲染为图片
+            try:
+                logger.info("使用text_to_image方法渲染图片")
+                url = await self.text_to_image(html_content)  # text_to_image() 是 Star 类的一个方法。
+                yield event.image_result(url)
+            except Exception as e:
+                logger.warning(f"HTML转图片失败: {str(e)}，使用纯文本输出")
+                # 构建纯文本输出
+                output = f"📊 缓存统计:\n"
+                output += f"• 总缓存文件数: {total_files}\n"
+                output += f"• 已知文本文件: {known_files}\n"
+                output += f"• 未知文本文件: {unknown_files}\n\n"
+                if known_files > 0:
+                    output += "📋 缓存内容列表:\n"
+                    for i, (md5_hash, text) in enumerate(mapping.items(), 1):
+                        if text != "[unknown]":
+                            display_text = text if len(text) <= 50 else text[:47] + "..."
+                            output += f"{i}. {display_text}\n"
+                if unknown_files > 0:
+                    output += f"\n⚠️  有 {unknown_files} 个缓存文件缺少文本信息（可能是旧版本创建的缓存）\n"
+                    unknown_md5_list = [md5 for md5, text in mapping.items() if text == '[unknown]']
+                    if unknown_md5_list:
+                        output += "   这些文件的MD5哈希为:\n"
+                        for md5 in unknown_md5_list[:20]:
+                            output += f"   • {md5}\n"
+                        if unknown_files > 20:
+                            output += f"   等（共{unknown_files}个）\n"
+                yield event.plain_result(output)
 
         except Exception as e:
             logger.error(f"列出缓存文件时发生错误: {str(e)}")

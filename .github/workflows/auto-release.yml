@@ -77,15 +77,15 @@ jobs:
           draft: false
           prerelease: false
 
-      # 5️⃣ 打包仓库为 zip
-      - name: 打包仓库
-        run: |
-          zip -r astrbot_plugin_manbo-tts-${{ steps.version.outputs.NEW_TAG }}.zip . -x "*.git*" "*.github*"
+      # # 5️⃣ 打包仓库为 zip
+      # - name: 打包仓库
+      #   run: |
+      #     zip -r astrbot_plugin_manbo-tts-${{ steps.version.outputs.NEW_TAG }}.zip . -x "*.git*" "*.github*"
 
-      # 6️⃣ 上传 zip 到 Release
-      - name: 上传 zip 到 Release
-        uses: softprops/action-gh-release@v2
-        with:
-          files: astrbot_plugin_manbo-tts-${{ steps.version.outputs.NEW_TAG }}.zip
-          tag_name: ${{ steps.version.outputs.NEW_TAG }}
-          token: ${{ secrets.AUTO_RELEASE }}
+      # # 6️⃣ 上传 zip 到 Release
+      # - name: 上传 zip 到 Release
+      #   uses: softprops/action-gh-release@v2
+      #   with:
+      #     files: astrbot_plugin_manbo-tts-${{ steps.version.outputs.NEW_TAG }}.zip
+      #     tag_name: ${{ steps.version.outputs.NEW_TAG }}
+      #     token: ${{ secrets.AUTO_RELEASE }}

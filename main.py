@@ -1,10 +1,11 @@
 import aiohttp
 import asyncio
 import hashlib
+import json
 import os
 import pathlib
 from urllib.parse import urlparse, urlencode, urlunparse, parse_qs
-from typing import Optional
+from typing import Optional, Dict
 from astrbot.api.event import filter, AstrMessageEvent
 from astrbot.api.star import Context, Star
 from astrbot.api import logger, AstrBotConfig
@@ -39,25 +40,138 @@ class ManboTTSPlugin(Star):
         # 不再提供自定义缓存目录选项，所有缓存文件统一存储到规范目录
         data_path = pathlib.Path(get_astrbot_data_path())
         self.cache_dir = str((data_path / "plugin_data" / self.PLUGIN_NAME / "audio_cache").resolve())
+        self.mapping_file = str(pathlib.Path(self.cache_dir) / "md5_mapping.json")
 
         logger.info(f"缓存功能启用: {self.cache_enabled}")
         logger.info(f"缓存目录（规范路径）: {self.cache_dir}")
+        logger.info(f"映射文件路径: {self.mapping_file}")
 
         self.session = None
-        self.lock = asyncio.Lock()
+        self.lock = asyncio.Lock()  # 用于session管理的锁
+        self.mapping_lock = asyncio.Lock()  # 用于映射文件管理的锁
 
     @filter.on_astrbot_loaded()  # 插件加载完成后初始化 session
     async def on_loaded(self):
         """插件初始化，创建一个全局的 session"""
+        logger.info(f"插件加载完成，开始初始化")
+        logger.info(f"缓存功能状态: {self.cache_enabled}")
+
         async with self.lock:
             if not self.session or self.session.closed:
+                logger.info("初始化aiohttp session")
                 self.session = aiohttp.ClientSession()
+                logger.info("aiohttp session初始化完成")
 
         # 确保缓存目录存在
         if self.cache_enabled:
+            logger.info("缓存功能已启用，准备缓存目录")
             cache_path = pathlib.Path(self.cache_dir)
+            logger.info(f"缓存目录路径: {cache_path.absolute()}")
             cache_path.mkdir(parents=True, exist_ok=True)
             logger.info(f"缓存目录已准备：{cache_path.absolute()}")
+
+            # 初始化映射文件并迁移现有缓存
+            logger.info("开始初始化映射文件")
+            await self._init_mapping_file()
+            logger.info("映射文件初始化完成")
+        else:
+            logger.info("缓存功能未启用，跳过映射文件初始化")
+
+    async def _init_mapping_file(self):
+        """初始化映射文件并迁移现有缓存"""
+        logger.info(f"开始初始化映射文件: {self.mapping_file}")
+        mapping_path = pathlib.Path(self.mapping_file)
+        cache_dir_path = pathlib.Path(self.cache_dir)
+
+        logger.info(f"映射文件路径: {mapping_path}, 是否存在: {mapping_path.exists()}")
+        logger.info(f"缓存目录路径: {cache_dir_path}, 是否存在: {cache_dir_path.exists()}")
+
+        if not mapping_path.exists():
+            # 创建空的映射文件
+            logger.info(f"映射文件不存在，创建新的映射文件")
+            await self._save_mapping({})
+            logger.info(f"创建新的映射文件完成: {self.mapping_file}")
+        else:
+            # 加载现有映射
+            logger.info(f"映射文件已存在，加载现有映射")
+            mapping = await self._load_mapping()
+            logger.info(f"加载现有映射文件完成，包含 {len(mapping)} 条记录")
+
+        # 迁移现有缓存文件（扫描.wav文件，确保所有文件都在映射中）
+        logger.info("开始迁移现有缓存文件")
+        await self._migrate_existing_cache()
+        logger.info("迁移现有缓存文件完成")
+
+    async def _load_mapping(self) -> Dict[str, str]:
+        """加载映射文件"""
+        mapping_path = pathlib.Path(self.mapping_file)
+        if not mapping_path.exists():
+            return {}
+
+        try:
+            async with self.mapping_lock:
+                with open(self.mapping_file, 'r', encoding='utf-8') as f:
+                    return json.load(f)
+        except (json.JSONDecodeError, IOError) as e:
+            logger.error(f"加载映射文件失败: {e}")
+            return {}
+
+    async def _save_mapping(self, mapping: Dict[str, str]):
+        """保存映射文件"""
+        try:
+            async with self.mapping_lock:
+                with open(self.mapping_file, 'w', encoding='utf-8') as f:
+                    json.dump(mapping, f, ensure_ascii=False, indent=2)
+        except IOError as e:
+            logger.error(f"保存映射文件失败: {e}")
+
+    async def _add_to_mapping(self, md5_hash: str, text: str):
+        """添加新的映射记录"""
+        mapping = await self._load_mapping()
+        mapping[md5_hash] = text
+        await self._save_mapping(mapping)
+        logger.debug(f"添加映射记录: {md5_hash} -> {text[:50]}...")
+
+    async def _remove_from_mapping(self, md5_hash: str):
+        """从映射中移除记录"""
+        mapping = await self._load_mapping()
+        if md5_hash in mapping:
+            del mapping[md5_hash]
+            await self._save_mapping(mapping)
+            logger.debug(f"移除映射记录: {md5_hash}")
+
+    async def _migrate_existing_cache(self):
+        """迁移现有缓存文件，确保所有.wav文件都在映射中，并清理不存在的映射条目"""
+        cache_dir_path = pathlib.Path(self.cache_dir)
+        mapping = await self._load_mapping()
+        updated = False
+        cleaned = False
+
+        # 获取所有.wav文件的MD5哈希
+        existing_files = {wav_file.stem for wav_file in cache_dir_path.glob("*.wav")}
+
+        # 1. 添加缺失的映射条目
+        for md5_hash in existing_files:
+            if md5_hash not in mapping:
+                # 添加未知文本标记
+                mapping[md5_hash] = "[unknown]"
+                updated = True
+                logger.info(f"迁移现有缓存文件: {md5_hash}.wav -> [unknown]")
+
+        # 2. 清理不存在的映射条目
+        mapping_keys = list(mapping.keys())
+        for md5_hash in mapping_keys:
+            if md5_hash not in existing_files:
+                del mapping[md5_hash]
+                cleaned = True
+                logger.info(f"清理不存在的映射条目: {md5_hash}")
+
+        if updated or cleaned:
+            await self._save_mapping(mapping)
+            if updated:
+                logger.info(f"新增 {len([k for k, v in mapping.items() if v == '[unknown]' and k in existing_files])} 条未知记录")
+            if cleaned:
+                logger.info(f"清理了 {len([k for k in mapping_keys if k not in existing_files])} 个不存在的映射条目")
 
     def _get_cache_key(self, text: str) -> str:
         """生成文本的缓存键（MD5哈希）"""
@@ -99,6 +213,11 @@ class ManboTTSPlugin(Star):
                         f.write(chunk)
 
                 logger.info(f"音频已缓存：{cache_path}")
+
+                # 添加映射记录
+                md5_hash = cache_path.stem  # 移除.wav扩展名获取MD5哈希
+                await self._add_to_mapping(md5_hash, text)
+
                 return True
         except Exception as e:
             logger.error(f"下载音频到缓存失败：{str(e)}")
@@ -206,6 +325,58 @@ class ManboTTSPlugin(Star):
             logger.error(f"URL 校验失败：{str(e)}")
             return False
 
+    @filter.command("manbo-list")
+    async def manbo_list(self, event: AstrMessageEvent):
+        """列出所有缓存的音频文件及其对应的文本"""
+        logger.info(f"执行manbo-list命令")
+
+        if not self.cache_enabled:
+            logger.warning("缓存功能未启用，无法列出缓存文件")
+            yield event.plain_result("缓存功能未启用，无法列出缓存文件。")
+            return
+
+        try:
+            # 确保映射文件已初始化
+            await self._init_mapping_file()
+
+            mapping = await self._load_mapping()
+            logger.info(f"加载映射文件，包含 {len(mapping)} 条记录")
+
+            if not mapping:
+                yield event.plain_result("缓存目录为空，暂无缓存文件。")
+                return
+
+            # 统计信息
+            total_files = len(mapping)
+            known_files = len([text for text in mapping.values() if text != "[unknown]"])
+            unknown_files = total_files - known_files
+
+            # 构建输出消息
+            output = f"📊 缓存统计:\n"
+            output += f"• 总缓存文件数: {total_files}\n"
+            output += f"• 已知文本文件: {known_files}\n"
+            output += f"• 未知文本文件: {unknown_files}\n\n"
+
+            if known_files > 0:
+                output += "📋 缓存内容列表:\n"
+                for i, (md5_hash, text) in enumerate(mapping.items(), 1):
+                    if text != "[unknown]":
+                        # 截断长文本
+                        display_text = text if len(text) <= 50 else text[:47] + "..."
+                        output += f"{i}. {display_text}\n"
+
+            if unknown_files > 0:
+                output += f"\n⚠️  有 {unknown_files} 个缓存文件缺少文本信息（可能是旧版本创建的缓存）\n"
+                output += f"   这些文件的MD5哈希为: {', '.join([md5 for md5, text in mapping.items() if text == '[unknown]'][:10])}"
+                if unknown_files > 10:
+                    output += f" 等（共{unknown_files}个）"
+
+            yield event.plain_result(output)
+
+        except Exception as e:
+            logger.error(f"列出缓存文件时发生错误: {str(e)}")
+            yield event.plain_result("列出缓存文件时发生错误，请查看日志。")
+
     @filter.command("manbo")
     async def manbo(self, event: AstrMessageEvent, text: str):
         """这是一个文本转语音（TTS）指令"""
@@ -223,6 +394,11 @@ class ManboTTSPlugin(Star):
             yield event.plain_result("请输入要转换为语音的文本！")
             return
 
+        # 特殊处理：如果文本是"list"，提示使用manbo-list命令
+        if text_str.lower() == "list":
+            yield event.plain_result("请使用 '/manbo-list' 命令查看缓存列表，或输入其他文本进行语音转换。")
+            return
+
         # 输入文本长度限制
         if len(text_str) > MAX_TEXT_LENGTH:
             yield event.plain_result(f"文本长度超过限制（{MAX_TEXT_LENGTH} 字符）。请缩短文本再试。")
@@ -238,6 +414,11 @@ class ManboTTSPlugin(Star):
                 if self._is_cached(text_str):
                     cache_path = self._get_cache_path(text_str)
                     logger.info(f"使用缓存音频：{cache_path}")
+
+                    # 确保映射记录存在（处理旧缓存或未知文本）
+                    md5_hash = cache_path.stem  # 移除.wav扩展名获取MD5哈希
+                    await self._add_to_mapping(md5_hash, text_str)
+
                     # 发送本地音频文件
                     chain = [Comp.Record(file=str(cache_path))]
                     yield event.chain_result(chain)
@@ -272,6 +453,7 @@ class ManboTTSPlugin(Star):
         except Exception as e:
             logger.error(f"处理请求时发生错误: {str(e)}")
             yield event.plain_result("发生了错误，请稍后再试。")
+
 
     async def terminate(self):
         """插件销毁时的清理工作"""

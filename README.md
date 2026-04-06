@@ -1,7 +1,8 @@
 # 曼波语音插件
 ![GitHub release](https://img.shields.io/github/v/release/zoffyultraman/astrbot_plugin_manbo-tts)  
 支持milorapart API或自定义TTS API：
-- milorapart: https://api.milorapart.top/apis/mbAIsc
+- 普通版API: https://api.milorapart.top/apis/mbAIsc (需要API key)
+- VIP版API: https://api.milorapart.top/apis/mbAIscvip (需要API key，支持速度调节)
 - 自定义API：直接返回音频文件的HTTP接口，支持text和text_language参数（[部署指南](api_setup.md)）
 
 提供曼波语音信息生成
@@ -21,8 +22,16 @@
 
 | 配置项 | 类型 | 说明 | 默认值 | 可选值 |
 |--------|------|------|--------|--------|
+| api_type | string | API类型选择：普通版API或VIP版API | default | default/vip |
+| api_key | string | API密钥，用于Bearer token认证和VIP API的key参数。格式：Bearer {api_key} | "" | 有效的API密钥 |
+| tts_speed | float | 语音速度参数（仅VIP API支持），范围0.5-2.0 | 1.0 | 0.5-2.0之间的浮点数 |
 | cache_enabled | bool | 是否启用音频缓存功能 | true | true/false |
 | custom_api_url | string | 自定义TTS API地址，如果设置则使用此接口，否则使用默认的milorapart API。自定义接口应直接返回音频文件，支持text和text_language参数。如需自建API服务，请参考[API部署指南](api_setup.md)。 | "" | 任意有效的HTTP URL |
+
+**注意**：
+- VIP版API支持`speed`参数调节语音速度（0.5-2.0），普通版API不支持
+- 两个版本的API都需要API key进行认证
+- 同一个API key既用于Bearer token认证头，也用于VIP API的`key`参数
 
 ## api相关
 目前不提供公共API服务，但会发布预训练模型供用户自行部署。详细的GPT-SoVITS环境部署指南请参考 [API部署文档](api_setup.md)。

@@ -1,4 +1,22 @@
 {
+    "api_type": {
+      "type": "string",
+      "description": "API类型选择：普通版API (mbAIsc) 或 VIP版API (mbAIscvip)",
+      "default": "default",
+      "options": ["default", "vip"]
+    },
+    "api_key": {
+      "type": "string",
+      "description": "API密钥，用于Bearer token认证。格式：Bearer {api_key}",
+      "default": ""
+    },
+    "tts_speed": {
+      "type": "float",
+      "description": "语音速度参数（VIP API支持），范围0.5-2.0，默认1.0",
+      "default": 1.0,
+      "minimum": 0.5,
+      "maximum": 2.0
+    },
     "cache_enabled": {
       "type": "bool",
       "description": "是否启用音频缓存功能。启用后音频文件将存储在规范目录：data/plugin_data/astrbot_plugin_manbo_tts/audio_cache",

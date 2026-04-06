@@ -13,7 +13,8 @@ from astrbot.core.utils.astrbot_path import get_astrbot_data_path
 import astrbot.core.message.components as Comp
 
 # Manbo TTS API 信息
-MANBO_TTS_API_URL = "https://api.milorapart.top/apis/mbAIsc"
+MANBO_TTS_API_URL = "https://api.milorapart.top/apis/mbAIsc"  # 普通版API
+MANBO_TTS_VIP_API_URL = "https://api.milorapart.top/apis/mbAIscvip"  # VIP版API
 MAX_TEXT_LENGTH = 200  # 设置最大文本长度，避免请求过长
 ALLOWED_DOMAINS = ["api.milorapart.top"]  # 允许的音频 URL 域名白名单
 TIMEOUT = aiohttp.ClientTimeout(total=30, connect=10, sock_connect=10, sock_read=20)  # 全局超时设置
@@ -25,6 +26,9 @@ class ManboTTSPlugin(Star):
     def __init__(self, context: Context, config: Optional[AstrBotConfig] = None):
         super().__init__(context)
         self.config = config or {}
+        self.api_type = self.config.get("api_type", "default")  # default 或 vip
+        self.api_key = self.config.get("api_key", "")
+        self.tts_speed = self.config.get("tts_speed", 1.0)
         self.cache_enabled = self.config.get("cache_enabled", True)
         self.custom_api_url = self.config.get("custom_api_url", "")
         # 提取自定义API的域名用于URL验证
@@ -42,6 +46,9 @@ class ManboTTSPlugin(Star):
         self.cache_dir = str((data_path / "plugin_data" / self.PLUGIN_NAME / "audio_cache").resolve())
         self.mapping_file = str(pathlib.Path(self.cache_dir) / "md5_mapping.json")
 
+        logger.info(f"API类型: {self.api_type}")
+        logger.info(f"API密钥配置: {'已设置' if self.api_key else '未设置'}")
+        logger.info(f"语音速度: {self.tts_speed}")
         logger.info(f"缓存功能启用: {self.cache_enabled}")
         logger.info(f"缓存目录（规范路径）: {self.cache_dir}")
         logger.info(f"映射文件路径: {self.mapping_file}")
@@ -270,29 +277,69 @@ class ManboTTSPlugin(Star):
                     logger.error(f"自定义 API URL 未通过验证：{audio_url}")
                     return None
             else:
-                logger.info(f"使用 milorapart API，文本长度：{len(text_to_convert)}")
+                # 根据api_type选择API端点和参数
+                if self.api_type == "vip":
+                    api_url = MANBO_TTS_VIP_API_URL
+                    logger.info(f"使用 milorapart VIP API，文本长度：{len(text_to_convert)}")
+                    # VIP API参数
+                    params = {
+                        "text": text_to_convert,
+                        "format": "wav",
+                        "speed": str(self.tts_speed),
+                        "key": self.api_key if self.api_key else ""
+                    }
+                else:
+                    api_url = MANBO_TTS_API_URL
+                    logger.info(f"使用 milorapart 普通API，文本长度：{len(text_to_convert)}")
+                    # 普通API参数
+                    params = {
+                        "text": text_to_convert,
+                        "format": "wav"
+                    }
+
+                # 设置认证头
+                headers = {}
+                if self.api_key:
+                    headers["Authorization"] = f"Bearer {self.api_key}"
+                else:
+                    logger.warning(f"API密钥未设置，{self.api_type} API可能需要认证")
+
                 async with self.session.get(
-                    MANBO_TTS_API_URL,
-                    params={"text": text_to_convert, "format": "wav"},
+                    api_url,
+                    params=params,
+                    headers=headers,
                     timeout=TIMEOUT,  # 使用全局 timeout
                 ) as response:
                     if response.status != 200:
-                        logger.error(f"milorapart接口请求失败，状态码：{response.status}")
+                        logger.error(f"API接口请求失败，状态码：{response.status}")
                         return None
 
                     try:
                         data = await response.json()
-                        # 校验 data 格式和 'url' 字段
-                        if isinstance(data, dict) and "url" in data:
-                            audio_url = data["url"]
-                            if self.is_valid_url(audio_url):
-                                return audio_url
+
+                        # 根据API类型处理响应
+                        if self.api_type == "vip":
+                            # VIP API响应格式: {"code": 200, "msg": "...", "url": "...", "api_source": "..."}
+                            if isinstance(data, dict) and data.get("code") == 200 and "url" in data:
+                                audio_url = data["url"]
                             else:
-                                logger.error(f"非法的音频 URL：{audio_url}")
+                                logger.error(f"VIP API返回的JSON格式无效或code不为200：{data}")
                                 return None
                         else:
-                            logger.error(f"返回的 JSON 格式无效，或缺少 'url' 字段：{data}")
+                            # 普通API响应格式: {"url": "..."}
+                            if isinstance(data, dict) and "url" in data:
+                                audio_url = data["url"]
+                            else:
+                                logger.error(f"普通API返回的JSON格式无效或缺少'url'字段：{data}")
+                                return None
+
+                        # 验证URL安全性
+                        if self.is_valid_url(audio_url):
+                            return audio_url
+                        else:
+                            logger.error(f"非法的音频 URL：{audio_url}")
                             return None
+
                     except aiohttp.ContentTypeError:
                         logger.error("响应内容不是有效的 JSON")
                         return None
@@ -494,14 +541,14 @@ li {{ padding: 2px 0; font-family: monospace; }}
                 download_success = await self._download_to_cache(audio_url, text_str)
                 if download_success:
                     cache_path = self._get_cache_path(text_str)
-                    chain = [Comp.Record(file=str(cache_path), url=str(cache_path))]
+                    chain = [Comp.Record(file=str(cache_path))]
                 else:
                     # 下载失败，直接发送原始 URL
                     logger.warning("缓存下载失败，使用原始 URL")
-                    chain = [Comp.Record(url=audio_url)]
+                    chain = [Comp.Record(file=audio_url,url=audio_url)]
             else:
                 # 未启用缓存，直接发送原始 URL
-                chain = [Comp.Record(url=audio_url)]
+                chain = [Comp.Record(file=audio_url,url=audio_url)]
 
             yield event.chain_result(chain)
 

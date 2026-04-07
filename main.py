@@ -541,8 +541,3 @@ class ManboTTSPlugin(Star):
             if self.session:
                 await self.session.close()  # 关闭 session
                 self.session = None  # 清空 session
-
-
-
-
-

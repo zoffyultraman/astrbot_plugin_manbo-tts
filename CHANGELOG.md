@@ -4,10 +4,15 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
-## [v1.1.1] - 2026-04-07
+## [v1.1.3] - 2026-04-22
 
-### Updated
-- 更新至1.1.1
+### Change
+- 修改更新日志中的相关说明
+
+## [v1.1.2] - 2026-04-22
+
+### Added
+- 新增 CHANGELOG.md 记录更新日志
 
 ## [v1.1.0] - 2026-04-06
 
@@ -25,8 +30,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [v1.0.8] - 2026-04-04
 
-### Added
-- 添加百度网盘分享链接
+### Changed
+- 修改auto
 
 ## [v1.0.7] - 2026-04-03
 
